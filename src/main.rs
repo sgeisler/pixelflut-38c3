@@ -1,20 +1,17 @@
-use lazy_static::lazy_static;
 use std::io::*;
 use std::iter::zip;
 use std::net::TcpStream;
 
-mod lut;
-
 extern crate tinyppm;
+
+const HEX_LUT: [u8; 16] = [
+    b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D', b'E', b'F',
+];
 
 #[allow(unused)]
 const X_SIZE: usize = 3840;
 #[allow(unused)]
 const Y_SIZE: usize = 2160;
-
-lazy_static! {
-    static ref RGB_LUT: [[u8; 2]; 256] = lut::gen_rgb_lut();
-}
 
 #[derive(Clone, Copy)]
 struct RGB {
@@ -59,12 +56,12 @@ impl FrameBuffer {
         let zip_it = zip(self.idx.iter(), color_it);
 
         for (&idx, color) in zip_it {
-            self.str[idx] = RGB_LUT[color.r as usize][0];
-            self.str[idx + 1] = RGB_LUT[color.r as usize][1];
-            self.str[idx + 2] = RGB_LUT[color.g as usize][0];
-            self.str[idx + 3] = RGB_LUT[color.g as usize][1];
-            self.str[idx + 4] = RGB_LUT[color.b as usize][0];
-            self.str[idx + 5] = RGB_LUT[color.b as usize][1];
+            self.str[idx] = HEX_LUT[(color.r >> 4 & 0xF) as usize];
+            self.str[idx + 1] = HEX_LUT[(color.r & 0xF) as usize];
+            self.str[idx + 2] = HEX_LUT[(color.g >> 4 & 0xF) as usize];
+            self.str[idx + 3] = HEX_LUT[(color.g & 0xF) as usize];
+            self.str[idx + 4] = HEX_LUT[(color.b >> 4 & 0xF) as usize];
+            self.str[idx + 5] = HEX_LUT[(color.b & 0xF) as usize];
         }
     }
 }

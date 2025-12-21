@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 gif = "0.13.1"
-lazy_static = "1.5.0"
 tinyppm = "0.2.0"
 
 [profile.dev]
