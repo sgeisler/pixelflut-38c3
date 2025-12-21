@@ -1,10 +1,19 @@
 use std::net::TcpStream;
 use std::io::*;
+use std::cmp::max;
+use lazy_static::lazy_static;
+
+mod lut;
 
 extern crate tinyppm;
 
-const X_SIZE:i16 = 3840;
-const Y_SIZE:i16 = 1080;
+const X_SIZE:usize = 3840;
+const Y_SIZE:usize = 2160;
+
+lazy_static! {
+    static ref RGB_LUT:[[u8; 2]; 256] = lut::gen_rgb_lut();
+    static ref POS_LUT:Vec<Box<[u8]>> = lut::gen_pos_lut(max(X_SIZE, Y_SIZE));
+}
 
 #[derive(Clone)] struct RGB {
     r:u8,
@@ -40,20 +49,50 @@ fn get_image(filename: &String) -> Vec<Vec<RGB>> {
     frame
 }
 
-fn pixel(
-    stream:&mut TcpStream,
+#[inline] fn pixel(
+    stream:&mut BufWriter<TcpStream>,
     x:u16,
     y:u16,
     px:&RGB
-) -> std::io::Result<()> {
-    let send_str = format!("PX {} {} {:02x}{:02x}{:02x}\n", x, y, px.r, px.g, px.b);
+) -> std::io::Result<()> { 
+/*
+    let x_str = &POS_LUT[x as usize];
+    let y_str = &POS_LUT[y as usize];
+    let len = 12 + y_str.len() + x_str.len();
+
+    let mut send_str = Vec::<u8>::with_capacity(len);
+
+    send_str.extend(b"PX ");
+    send_str.extend(&(POS_LUT[x as usize]));
+    send_str.extend(b" ");
+    send_str.extend(&(POS_LUT[y as usize]));
+    send_str.extend(b" ");
+    send_str.extend(&(RGB_LUT[px.r as usize]));
+    send_str.extend(&(RGB_LUT[px.g as usize]));
+    send_str.extend(&(RGB_LUT[px.b as usize]));
+    send_str.extend(b"\n");
+    stream.write_all(&send_str)?;
+*/
+
+    
+
+    stream.write_all(b"PX ")?;
+    stream.write_all(&(POS_LUT[x as usize]))?;
+    stream.write_all(b" ")?;
+    stream.write_all(&(POS_LUT[y as usize]))?;
+    stream.write_all(b" ")?;
+    stream.write_all(&(RGB_LUT[px.r as usize]))?;
+    stream.write_all(&(RGB_LUT[px.g as usize]))?;
+    stream.write_all(&(RGB_LUT[px.b as usize]))?;
+    stream.write_all(b"\n")?;
+
     //println!("{}", send_str);
-    stream.write(send_str.as_bytes());
+    //stream.write_all(send_str.as_bytes());
     Ok(())
 }
 
 fn show_picture(
-    stream:&mut TcpStream,
+    stream:&mut BufWriter<TcpStream>,
     x_pos:u16,
     y_pos:u16,
     buf:&Vec<Vec<RGB>>,
@@ -65,17 +104,18 @@ fn show_picture(
         for px in row {
             for x_i in 0..scale {
                 for y_i in 0..scale {
-                    pixel(stream, x_pos + x*scale + x_i, y_pos + y*scale + y_i, px);
+                    pixel(stream, x_pos + x*scale + x_i, y_pos + y*scale + y_i, px)?;
                 }
             }
             x += 1;
         }
         y += 1;
     }
+    stream.flush()?;
     Ok(())
 }
 
-fn flood_white(stream:&mut TcpStream) -> std::io::Result<()> {
+#[allow(unused)] fn flood_white(stream:&mut BufWriter<TcpStream>) -> std::io::Result<()> {
     for x in 1..X_SIZE {
         for y in 1..Y_SIZE {
             pixel(stream, x as u16, y as u16, &RGB{r:255, g:255, b:255})?;
@@ -85,11 +125,13 @@ fn flood_white(stream:&mut TcpStream) -> std::io::Result<()> {
 }
 
 fn main() -> std::io::Result<()> {
-    let mut stream = TcpStream::connect("wall.c3pixelflut.de:1337")?;
+    let stream = TcpStream::connect("192.168.42.1:1337")?;
+    stream.set_nodelay(false).expect("set_nodelay failed");
+    let mut writer = BufWriter::with_capacity(1 << 22, stream);
 
     let mut frames : Vec<Vec<Vec<RGB>>> = Vec::new();
     for i in 1..13721 {
-        let filename = format!("./bee/bee_{:05}.ppm", i);
+        let filename = format!("./images/bee_images_{:05}.ppm", i);
         let image = get_image(&String::from(filename));
         frames.push(image);
     }
@@ -102,12 +144,8 @@ fn main() -> std::io::Result<()> {
     loop {
         for frame in &frames {
             for _ in 1..2 {
-                show_picture(&mut stream, 700, 0, &frame, 2);
+                show_picture(&mut writer, 0, 0, &frame, 2)?;
             }
         }
     }
-
-
-
-    Ok(())
 } // the stream is closed here
