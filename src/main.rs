@@ -7,6 +7,7 @@ use framebuffer::FrameBuffer;
 
 use std::io::*;
 use std::net::TcpStream;
+use std::sync::{Arc, OnceLock};
 
 #[allow(unused)]
 const X_SIZE: usize = 3840;
@@ -47,17 +48,16 @@ fn main() -> std::io::Result<()> {
     stream.set_nodelay(false).expect("set_nodelay failed");
     let mut writer = BufWriter::with_capacity(1 << 22, stream);
 
-    let frames = ffmpeg::extract_frames(&cla.path, cla.scale)?;
-
-    let width: usize = frames[0][0].len();
-    let height: usize = frames[0].len();
-
-    let mut fb = FrameBuffer::new(cla.x_pos, cla.y_pos, width, height);
-
     println!("start printing");
 
     loop {
-        let receiver = ffmpeg::open_stream(cla.path.clone(), cla.scale)?;
+        let frame_size = Arc::<OnceLock<(usize, usize)>>::default();
+        let receiver = ffmpeg::open_stream(cla.path.clone(), cla.scale, frame_size.clone())?;
+
+        let (width, height) = *frame_size.wait();
+
+        let mut fb = FrameBuffer::new(cla.x_pos, cla.y_pos, width, height);
+
         let mut id = 0;
         while let Ok(frame) = receiver.recv() {
             id += 1;

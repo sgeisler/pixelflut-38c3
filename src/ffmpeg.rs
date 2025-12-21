@@ -1,6 +1,8 @@
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::SyncSender;
+use std::sync::Arc;
+use std::sync::OnceLock;
 
 use ffmpeg::{format, media, software::scaling, util::frame};
 use ffmpeg_next as ffmpeg;
@@ -10,10 +12,16 @@ use super::RGB;
 
 const CHANNEL_SIZE: usize = 8;
 
-pub fn open_stream(path: String, scale_factor: f64) -> Result<Receiver<Frame>, ffmpeg::Error> {
+pub fn open_stream(
+    path: String,
+    scale_factor: f64,
+    frame_size: Arc<OnceLock<(usize, usize)>>,
+) -> Result<Receiver<Frame>, ffmpeg::Error> {
     let (sender, receiver) = mpsc::sync_channel(CHANNEL_SIZE);
 
-    std::thread::spawn(move || send_frames(sender, path, scale_factor));
+    std::thread::spawn(move || {
+        send_frames(sender, path, scale_factor, frame_size).expect("sender died")
+    });
 
     return Ok(receiver);
 }
@@ -22,6 +30,7 @@ pub fn send_frames(
     sender: SyncSender<Frame>,
     path: String,
     scale_factor: f64,
+    frame_size: Arc<OnceLock<(usize, usize)>>,
 ) -> Result<(), ffmpeg::Error> {
     ffmpeg::init()?;
 
@@ -40,6 +49,10 @@ pub fn send_frames(
 
     let scaled_width = ((width as f64) * scale_factor) as u32;
     let scaled_height = ((height as f64) * scale_factor) as u32;
+
+    frame_size
+        .set((scaled_width as usize, scaled_height as usize))
+        .expect("setting frame size failed");
 
     let mut scaler = scaling::Context::get(
         decoder.format(),
