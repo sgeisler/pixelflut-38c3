@@ -2,3 +2,7 @@ target
 bee
 *.gif
 *.ppm
+
+perf.data*
+*.svg
+images/
