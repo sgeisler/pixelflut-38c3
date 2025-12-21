@@ -1,13 +1,11 @@
+mod cli;
+mod framebuffer;
+
 use clap::Parser;
+use framebuffer::FrameBuffer;
+
 use std::io::*;
-use std::iter::zip;
 use std::net::TcpStream;
-
-extern crate tinyppm;
-
-const HEX_LUT: [u8; 16] = [
-    b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D', b'E', b'F',
-];
 
 #[allow(unused)]
 const X_SIZE: usize = 3840;
@@ -19,71 +17,6 @@ struct RGB {
     r: u8,
     g: u8,
     b: u8,
-}
-
-struct FrameBuffer {
-    str: Vec<u8>,
-    idx: Vec<usize>,
-}
-
-impl FrameBuffer {
-    #[allow(unused)]
-    fn new(x: usize, y: usize, w: usize, h: usize) -> FrameBuffer {
-        let n = w * h;
-        let mut fb = FrameBuffer {
-            str: Vec::new(),
-            idx: Vec::with_capacity(n),
-        };
-
-        println!("built framebuffer: x: {x} y: {y} w: {w} h: {h}");
-
-        for y_pos in y..y + h {
-            for x_pos in x..x + w {
-                let str1 = format!("PX {x_pos} {y_pos} ");
-
-                fb.str.extend_from_slice(str1.as_bytes());
-                fb.idx.push(fb.str.len());
-                fb.str.extend_from_slice(b"xxxxxx\n");
-            }
-        }
-
-        fb
-    }
-
-    #[inline]
-    fn fill(&mut self, color_it: impl Iterator<Item = RGB>) {
-        let zip_it = zip(self.idx.iter(), color_it);
-
-        for (&idx, color) in zip_it {
-            self.str[idx] = HEX_LUT[(color.r >> 4 & 0xF) as usize];
-            self.str[idx + 1] = HEX_LUT[(color.r & 0xF) as usize];
-            self.str[idx + 2] = HEX_LUT[(color.g >> 4 & 0xF) as usize];
-            self.str[idx + 3] = HEX_LUT[(color.g & 0xF) as usize];
-            self.str[idx + 4] = HEX_LUT[(color.b >> 4 & 0xF) as usize];
-            self.str[idx + 5] = HEX_LUT[(color.b & 0xF) as usize];
-        }
-    }
-}
-
-/// Simple program to greet a person
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Args {
-    /// x position to print to
-    #[arg(short)]
-    x_pos: usize,
-
-    /// y position to print to
-    #[arg(short)]
-    y_pos: usize,
-
-    /// address to connect to with port
-    #[arg(short, long)]
-    address: String,
-
-    /// scaling factor to use
-    #[arg(short, long, default_value_t = 1)]
-    scale: usize,
 }
 
 fn get_image(filename: &String) -> Vec<Vec<RGB>> {
@@ -129,12 +62,12 @@ fn show_picture(
     });
     fb.fill(iter);
 
-    stream.write_all(&fb.str)?;
+    fb.write_to(stream)?;
     Ok(())
 }
 
 fn main() -> std::io::Result<()> {
-    let cla = Args::parse();
+    let cla = cli::Args::parse();
 
     let stream = TcpStream::connect(cla.address)?;
     stream.set_nodelay(false).expect("set_nodelay failed");
