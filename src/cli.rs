@@ -17,6 +17,9 @@ pub struct Args {
     pub address: String,
 
     /// scaling factor to use
-    #[arg(short, long, default_value_t = 1)]
-    pub scale: usize,
+    #[arg(short, long, default_value_t = 1.0)]
+    pub scale: f64,
+
+    /// path to video
+    pub path: String,
 }
