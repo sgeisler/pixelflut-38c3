@@ -1,3 +1,4 @@
+use clap::Parser;
 use std::io::*;
 use std::iter::zip;
 use std::net::TcpStream;
@@ -34,7 +35,7 @@ impl FrameBuffer {
             idx: Vec::with_capacity(n),
         };
 
-        println!("x: {x} y: {y} w: {w} h: {h}");
+        println!("built framebuffer: x: {x} y: {y} w: {w} h: {h}");
 
         for y_pos in y..y + h {
             for x_pos in x..x + w {
@@ -45,8 +46,6 @@ impl FrameBuffer {
                 fb.str.extend_from_slice(b"xxxxxx\n");
             }
         }
-
-        println!("idx length: {}", fb.idx.len());
 
         fb
     }
@@ -64,6 +63,27 @@ impl FrameBuffer {
             self.str[idx + 5] = HEX_LUT[(color.b & 0xF) as usize];
         }
     }
+}
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// x position to print to
+    #[arg(short)]
+    x_pos: usize,
+
+    /// y position to print to
+    #[arg(short)]
+    y_pos: usize,
+
+    /// address to connect to with port
+    #[arg(short, long)]
+    address: String,
+
+    /// scaling factor to use
+    #[arg(short, long, default_value_t = 1)]
+    scale: usize,
 }
 
 fn get_image(filename: &String) -> Vec<Vec<RGB>> {
@@ -109,23 +129,14 @@ fn show_picture(
     });
     fb.fill(iter);
 
-    //print!("{}", String::from_utf8_lossy(&fb.str));
     stream.write_all(&fb.str)?;
     Ok(())
 }
 
-/*#[allow(unused)]
-fn flood_white(stream: &mut BufWriter<TcpStream>) -> std::io::Result<()> {
-    for x in 1..X_SIZE {
-        for y in 1..Y_SIZE {
-
-        }
-    }
-    Ok(())
-}*/
-
 fn main() -> std::io::Result<()> {
-    let stream = TcpStream::connect("localhost:1337")?;
+    let cla = Args::parse();
+
+    let stream = TcpStream::connect(cla.address)?;
     stream.set_nodelay(false).expect("set_nodelay failed");
     let mut writer = BufWriter::with_capacity(1 << 22, stream);
 
@@ -136,24 +147,16 @@ fn main() -> std::io::Result<()> {
         frames.push(image);
     }
 
-    //loop {
-    //    flood_white(&mut stream);
-    //}
-    const SCALE: usize = 2;
+    let width: usize = cla.scale * frames[0][0].len();
+    let height: usize = cla.scale * frames[0].len();
 
-    let x = 10;
-    let y = 50;
-
-    let width: usize = SCALE * frames[0][0].len();
-    let height: usize = SCALE * frames[0].len();
-
-    let mut fb = FrameBuffer::new(x, y, width, height);
+    let mut fb = FrameBuffer::new(cla.x_pos, cla.y_pos, width, height);
 
     println!("printing");
     loop {
         for frame in &frames {
             for _ in 1..2 {
-                show_picture(&mut writer, &mut fb, &frame, SCALE)?;
+                show_picture(&mut writer, &mut fb, &frame, cla.scale)?;
             }
         }
     }
