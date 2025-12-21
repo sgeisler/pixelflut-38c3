@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use ffmpeg::{format, media, software::scaling, util::frame};
 use ffmpeg_next as ffmpeg;
+use ffmpeg_next::Dictionary;
 
 use super::Frame;
 use super::RGB;
@@ -34,11 +35,18 @@ pub fn send_frames(
 ) -> Result<(), ffmpeg::Error> {
     ffmpeg::init()?;
 
-    let mut ictx = format::input(&path)?;
+    let mut options = Dictionary::new();
+
+    options.set("vcodec", "h264_omx");
+
+    let mut ictx = format::input_with_dictionary(&path, options)?;
     let input = ictx
         .streams()
         .best(media::Type::Video)
         .ok_or(ffmpeg::Error::StreamNotFound)?;
+
+    let framerate: f64 = input.avg_frame_rate().into();
+    let frame_duration: f64 = 1.0 / framerate;
 
     let video_stream_index = input.index();
     let context = ffmpeg::codec::context::Context::from_parameters(input.parameters())?;
@@ -61,7 +69,7 @@ pub fn send_frames(
         format::Pixel::RGB24,
         scaled_width,
         scaled_height,
-        scaling::Flags::BICUBIC,
+        scaling::Flags::BILINEAR,
     )?;
 
     let mut receive_and_process =
@@ -69,12 +77,13 @@ pub fn send_frames(
             let mut decoded = frame::Video::empty();
             while decoder.receive_frame(&mut decoded).is_ok() {
                 let mut rgb_frame = frame::Video::empty();
+
                 scaler.run(&decoded, &mut rgb_frame)?;
 
                 let data = rgb_frame.data(0);
                 let stride = rgb_frame.stride(0);
 
-                let frame: Frame = (0..scaled_height as usize)
+                let img_data: Vec<Vec<RGB>> = (0..scaled_height as usize)
                     .map(|y| {
                         let row_start = y * stride;
                         (0..scaled_width as usize)
@@ -85,6 +94,10 @@ pub fn send_frames(
                             .collect()
                     })
                     .collect();
+                let frame = Frame {
+                    img: img_data,
+                    frame_duration: frame_duration,
+                };
                 sender.send(frame).expect("sender couldn't send");
             }
             Ok(())

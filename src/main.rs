@@ -8,13 +8,17 @@ use framebuffer::FrameBuffer;
 use std::io::*;
 use std::net::TcpStream;
 use std::sync::{Arc, OnceLock};
+use std::time::SystemTime;
 
 #[allow(unused)]
 const X_SIZE: usize = 3840;
 #[allow(unused)]
 const Y_SIZE: usize = 2160;
 
-type Frame = Vec<Vec<RGB>>;
+pub struct Frame {
+    img: Vec<Vec<RGB>>,
+    frame_duration: f64,
+}
 
 #[derive(Clone, Copy)]
 struct RGB {
@@ -29,15 +33,29 @@ impl RGB {
     }
 }
 
-fn show_picture(
+fn show_frame(
     stream: &mut BufWriter<TcpStream>,
     fb: &mut FrameBuffer,
     buf: &Frame,
 ) -> std::io::Result<()> {
-    let iter = buf.iter().flat_map(|x| x.iter().copied());
+    let iter = buf.img.iter().flat_map(|x| x.iter().copied());
+
     fb.fill(iter);
 
-    fb.write_to(stream)?;
+    let frame_start_ts = SystemTime::now();
+
+    loop {
+        fb.write_to(&mut *stream)?;
+
+        let elapsed = SystemTime::now()
+            .duration_since(frame_start_ts)
+            .expect("system time error");
+
+        if elapsed.as_secs_f64() > buf.frame_duration {
+            break;
+        }
+    }
+
     Ok(())
 }
 
@@ -64,7 +82,7 @@ fn main() -> std::io::Result<()> {
             if id % 100 == 0 {
                 println!("Frame {id}");
             }
-            show_picture(&mut writer, &mut fb, &frame)?;
+            show_frame(&mut writer, &mut fb, &frame)?;
         }
     }
 } // the stream is closed here
