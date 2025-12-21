@@ -13,6 +13,8 @@ const X_SIZE: usize = 3840;
 #[allow(unused)]
 const Y_SIZE: usize = 2160;
 
+type Frame = Vec<Vec<RGB>>;
+
 #[derive(Clone, Copy)]
 struct RGB {
     r: u8,
@@ -29,7 +31,7 @@ impl RGB {
 fn show_picture(
     stream: &mut BufWriter<TcpStream>,
     fb: &mut FrameBuffer,
-    buf: &Vec<Vec<RGB>>,
+    buf: &Frame,
 ) -> std::io::Result<()> {
     let iter = buf.iter().flat_map(|x| x.iter().copied());
     fb.fill(iter);
@@ -53,11 +55,16 @@ fn main() -> std::io::Result<()> {
     let mut fb = FrameBuffer::new(cla.x_pos, cla.y_pos, width, height);
 
     println!("start printing");
+
     loop {
-        for frame in &frames {
-            for _ in 1..2 {
-                show_picture(&mut writer, &mut fb, &frame)?;
+        let receiver = ffmpeg::open_stream(cla.path.clone(), cla.scale)?;
+        let mut id = 0;
+        while let Ok(frame) = receiver.recv() {
+            id += 1;
+            if id % 100 == 0 {
+                println!("Frame {id}");
             }
+            show_picture(&mut writer, &mut fb, &frame)?;
         }
     }
 } // the stream is closed here
