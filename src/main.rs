@@ -4,11 +4,13 @@ mod framebuffer;
 
 use clap::Parser;
 use framebuffer::FrameBuffer;
+use image::ImageReader;
 
-use std::io::*;
+use core::f64;
 use std::net::TcpStream;
 use std::sync::{Arc, OnceLock};
 use std::time::SystemTime;
+use std::io::*;
 
 #[allow(unused)]
 const X_SIZE: usize = 3840;
@@ -59,10 +61,8 @@ fn show_frame(
     Ok(())
 }
 
-fn main() -> std::io::Result<()> {
-    let cla = cli::Args::parse();
-
-    let stream = TcpStream::connect(cla.address)?;
+fn render_video(common_args: &cli::CommonArgs, args: &cli::VideoArgs) -> anyhow::Result<()> {
+    let stream = TcpStream::connect(&common_args.address)?;
     stream.set_nodelay(false).expect("set_nodelay failed");
     let mut writer = BufWriter::with_capacity(1 << 22, stream);
 
@@ -70,11 +70,11 @@ fn main() -> std::io::Result<()> {
 
     loop {
         let frame_size = Arc::<OnceLock<(usize, usize)>>::default();
-        let receiver = ffmpeg::open_stream(cla.path.clone(), cla.scale, frame_size.clone())?;
+        let receiver = ffmpeg::open_stream(args.path.clone(), args.scale, frame_size.clone())?;
 
         let (width, height) = *frame_size.wait();
 
-        let mut fb = FrameBuffer::new(cla.x_pos, cla.y_pos, width, height);
+        let mut fb = FrameBuffer::new(common_args.x_pos, common_args.y_pos, width, height);
 
         let mut id = 0;
         while let Ok(frame) = receiver.recv() {
@@ -85,4 +85,47 @@ fn main() -> std::io::Result<()> {
             show_frame(&mut writer, &mut fb, &frame)?;
         }
     }
+}
+
+fn render_image(common_args: &cli::CommonArgs, args: &cli::ImageArgs) -> anyhow::Result<()> {
+    let stream: TcpStream = TcpStream::connect(&common_args.address)?;
+    // stream.set_nodelay(false).expect("set_nodelay failed");
+    let mut writer = BufWriter::with_capacity(1 << 22, stream);
+
+    let image = ImageReader::open(&args.path)?.decode()?;
+    let width = image.width();
+    let height = image.height();
+
+    let frame = image
+        .to_rgb8()
+        .as_raw()
+        .chunks(3)
+        .map(|pixel| RGB::new(pixel[0], pixel[1], pixel[2]))
+        .collect::<Vec<_>>();
+
+    let mut fb = FrameBuffer::new(
+        common_args.x_pos,
+        common_args.y_pos,
+        width as usize,
+        height as usize,
+    );
+
+    fb.fill(frame.into_iter());
+
+    loop {
+        fb.write_to(&mut writer)?;
+    }
+
+    Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+    let cla = cli::Args::parse();
+
+    match cla.mode {
+        cli::Mode::Video(args) => render_video(&cla.common, &args)?,
+        cli::Mode::Image(args) => render_image(&cla.common, &args)?,
+    }
+
+    Ok(())
 } // the stream is closed here
