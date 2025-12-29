@@ -9,6 +9,7 @@ clap = {version = "4.5.53", features = ["derive"]}
 ffmpeg-next = "8.0.0"
 gif = "0.13.1"
 image = "0.25"
+rand = "0.9"
 tinyppm = "0.2.0"
 
 [profile.dev]

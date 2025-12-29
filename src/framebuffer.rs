@@ -1,4 +1,6 @@
-use std::{io::Write, iter::zip};
+use std::{io::Write, iter::zip, vec};
+
+use rand::seq::SliceRandom;
 
 const HEX_LUT: [u8; 16] = [
     b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D', b'E', b'F',
@@ -15,19 +17,23 @@ impl FrameBuffer {
         let n = w * h;
         let mut fb = FrameBuffer {
             str: Vec::new(),
-            idx: Vec::with_capacity(n),
+            idx: vec![0; n],
         };
 
         println!("built framebuffer: x: {x} y: {y} w: {w} h: {h}");
 
-        for y_pos in y..y + h {
-            for x_pos in x..x + w {
-                let str1 = format!("PX {x_pos} {y_pos} ");
+        let mut positions = (y..y + h)
+            .flat_map(|y_pos| (x..x + w).map(move |x_pos| (x_pos, y_pos)))
+            .enumerate()
+            .collect::<Vec<_>>();
+        positions.shuffle(&mut rand::thread_rng());
 
-                fb.str.extend_from_slice(str1.as_bytes());
-                fb.idx.push(fb.str.len());
-                fb.str.extend_from_slice(b"xxxxxx\n");
-            }
+        for (pixel_idx, (x_pos, y_pos)) in positions {
+            let str1 = format!("PX {x_pos} {y_pos} ");
+
+            fb.str.extend_from_slice(str1.as_bytes());
+            fb.idx[pixel_idx] = fb.str.len();
+            fb.str.extend_from_slice(b"xxxxxx\n");
         }
 
         fb

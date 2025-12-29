@@ -7,10 +7,10 @@ use framebuffer::FrameBuffer;
 use image::ImageReader;
 
 use core::f64;
+use std::io::*;
 use std::net::TcpStream;
 use std::sync::{Arc, OnceLock};
 use std::time::SystemTime;
-use std::io::*;
 
 #[allow(unused)]
 const X_SIZE: usize = 3840;
